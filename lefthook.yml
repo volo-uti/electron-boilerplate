@@ -1,0 +1,21 @@
+pre-commit:
+  parallel: true
+  commands:
+    format:
+      run: pnpm fmt:check
+    lint:
+      run: pnpm lint
+
+# Pushing main or develop runs the gate in a clean container; other branches run it locally.
+pre-push:
+  commands:
+    verify:
+      only:
+        - ref: main
+        - ref: develop
+      run: pnpm verify
+    check:
+      skip:
+        - ref: main
+        - ref: develop
+      run: pnpm check

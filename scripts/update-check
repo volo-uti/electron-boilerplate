@@ -1,0 +1,68 @@
+#!/bin/bash
+# Report outdated dependencies (Electron included), Node LTS and pnpm. Outdated is not an error.
+# Exits non-zero only when the check itself fails.
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+
+echo "== Outdated dependencies (pnpm outdated)"
+# pnpm exits 1 when something is outdated; any other failure is a real error.
+set +e
+pnpm outdated
+status=$?
+set -e
+[ "$status" -le 1 ] || { echo "update-check: pnpm outdated failed (exit $status)" >&2; exit 1; }
+
+node --input-type=module - <<'JS'
+import { readFileSync } from "node:fs";
+
+const MONTH_MS = 30.44 * 24 * 3600 * 1000;
+const fail = (message) => {
+  console.error(`update-check: ${message}`);
+  process.exit(1);
+};
+const getJson = async (url) => {
+  const response = await fetch(url);
+  if (!response.ok) fail(`${url} -> HTTP ${response.status}`);
+  return response.json();
+};
+
+const rootPkg = JSON.parse(readFileSync("package.json", "utf8"));
+
+// Node: latest LTS vs .nvmrc.
+console.log("\n== Node");
+const releases = await getJson("https://nodejs.org/dist/index.json").catch((e) => fail(e.message));
+const lts = releases.find((release) => release.lts);
+const nodePin = readFileSync(".nvmrc", "utf8").trim().replace(/^v/, "");
+console.log(`latest LTS: ${lts.version} (${lts.lts}); .nvmrc: ${nodePin}`);
+if (`v${nodePin}` !== lts.version) console.log("  -> update .nvmrc");
+
+// pnpm: latest vs packageManager.
+console.log("\n== pnpm");
+const pnpm = await getJson("https://registry.npmjs.org/pnpm/latest").catch((e) => fail(e.message));
+const pnpmPin = rootPkg.packageManager?.replace(/^pnpm@/, "");
+console.log(`latest: ${pnpm.version}; packageManager: ${pnpmPin ?? "not set"}`);
+if (pnpmPin && pnpmPin !== pnpm.version) console.log("  -> update packageManager");
+
+// Direct dependencies whose latest release is older than 12 months.
+console.log("\n== REVISIT (latest stable published more than 12 months ago)");
+const names = new Set();
+for (const group of ["dependencies", "devDependencies"]) {
+  for (const dep of Object.keys(rootPkg[group] ?? {})) names.add(dep);
+}
+const cutoff = Date.now() - 12 * MONTH_MS;
+let revisit = 0;
+await Promise.all(
+  [...names].sort().map(async (dep) => {
+    const doc = await getJson(`https://registry.npmjs.org/${dep.replace("/", "%2F")}`).catch((e) => fail(e.message));
+    const latest = doc["dist-tags"].latest;
+    const published = new Date(doc.time[latest]);
+    if (published.getTime() < cutoff) {
+      revisit += 1;
+      console.log(`REVISIT ${dep}@${latest} (published ${published.toISOString().slice(0, 10)})`);
+    }
+  }),
+);
+if (revisit === 0) console.log("none");
+JS

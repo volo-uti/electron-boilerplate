@@ -1,0 +1,48 @@
+name: Release Windows
+
+# `pnpm release` on a Mac uploads the macOS and Linux installers to a draft release and pushes the
+# version tag. This job adds the Windows installer to the same draft. Tests ran locally; none run here.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/slack-notify
+        with:
+          status: start
+          title: Windows release
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CICD_CHANNEL }}
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # SIGN: install the signing provider's client here (docs/release.md); without it the installer is unsigned.
+      # Builds the Squirrel installer for this runner and uploads it to the draft release of the tag.
+      - run: pnpm exec electron-forge release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WINDOWS_SIGN_PARAMS: ${{ secrets.WINDOWS_SIGN_PARAMS }}
+          WINDOWS_TIMESTAMP_SERVER: ${{ vars.WINDOWS_TIMESTAMP_SERVER }}
+          SIGNTOOL_PATH: ${{ vars.SIGNTOOL_PATH }}
+      - uses: ./.github/actions/slack-notify
+        if: always()
+        with:
+          status: ${{ job.status }}
+          title: Windows release
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ vars.SLACK_CICD_CHANNEL }}

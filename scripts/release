@@ -1,0 +1,69 @@
+#!/bin/bash
+# Release from a Mac: run the gate, build the macOS installers here and the Linux installers in Docker,
+# upload them to a draft GitHub release, then push the version tag so CI adds the Windows installer.
+# Usage: pnpm release   (environment values are listed in docs/release.md)
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+
+die() { echo "release: $*" >&2; exit 1; }
+
+# Posts one line to Slack when SLACK_BOT_TOKEN and SLACK_CICD_CHANNEL are set; a failed post only warns.
+notify() {
+  [ -n "${SLACK_BOT_TOKEN:-}" ] && [ -n "${SLACK_CICD_CHANNEL:-}" ] || return 0
+  local body
+  body="$(node -e 'console.log(JSON.stringify({ channel: process.argv[1], text: process.argv[2] }))' "$SLACK_CICD_CHANNEL" "$1")"
+  curl -fsS https://slack.com/api/chat.postMessage \
+    -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+    -H "Content-Type: application/json; charset=utf-8" \
+    --data "$body" >/dev/null || echo "release: the Slack message was not sent" >&2
+}
+
+[ "$(uname -s)" = Darwin ] || die "run it on macOS: macOS apps are built and signed only there"
+command -v docker >/dev/null 2>&1 || die "docker is not installed (the Linux installers are built in a container)"
+[ -n "${GITHUB_TOKEN:-}" ] || die "GITHUB_TOKEN is not set (a token that can write this repository's contents)"
+[ -z "$(git status --porcelain)" ] || die "the working tree is not clean"
+
+# owner/name of the GitHub repository: from GITHUB_REPOSITORY, else from a github.com origin URL.
+if [ -z "${GITHUB_REPOSITORY:-}" ]; then
+  origin="$(git remote get-url origin)"
+  [[ "$origin" =~ ^(git@github\.com:|ssh://git@github\.com/|https://github\.com/)([^/]+/[^/]+)$ ]] ||
+    die "origin is not a github.com URL ($origin); set GITHUB_REPOSITORY=owner/name"
+  GITHUB_REPOSITORY="${BASH_REMATCH[2]%.git}"
+fi
+[[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "GITHUB_REPOSITORY must be owner/name"
+export GITHUB_REPOSITORY
+
+version="$(node -p 'require("./package.json").version')"
+tag="v$version"
+! git rev-parse -q --verify "refs/tags/$tag" >/dev/null || die "tag $tag exists here; raise the version in package.json first"
+! git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null || die "tag $tag exists on origin; raise the version first"
+
+notify "🚀 $GITHUB_REPOSITORY release $tag started"
+trap 'notify "🔥 $GITHUB_REPOSITORY release $tag failed"' ERR
+
+pnpm check
+rm -rf out/make out/make-results
+
+# Forge reads the App Store Connect API key for notarization from a file.
+if [ -n "${ASC_KEY_CONTENT:-}" ]; then
+  ASC_KEY_PATH="$(mktemp)"
+  export ASC_KEY_PATH
+  trap 'rm -f "$ASC_KEY_PATH"' EXIT
+  printf '%s\n' "$ASC_KEY_CONTENT" > "$ASC_KEY_PATH"
+fi
+pnpm exec electron-forge make --arch arm64,x64
+
+# The container runs the gate again from a clean checkout, then makes the Linux installers into out/.
+DOCKER_BUILDKIT=1 docker build --target linux-out \
+  --build-arg "NODE_VERSION=$(tr -d '[:space:]' < .nvmrc)" \
+  --output type=local,dest=out .
+
+pnpm exec electron-forge release --from-make
+git tag "$tag"
+git push origin "$tag" || { git tag -d "$tag" >/dev/null; die "pushing $tag failed; the draft holds macOS and Linux, run again to retry"; }
+
+trap - ERR
+notify "🌼 $GITHUB_REPOSITORY release $tag: macOS and Linux are in the draft; CI adds Windows"
+echo "release: $tag is a draft on GitHub. Publish it once the Windows job has added its installer."

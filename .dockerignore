@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+.vite
+out
+test-results
+playwright-report
+*.tsbuildinfo
+.env
+.env.*
+Dockerfile
+.dockerignore

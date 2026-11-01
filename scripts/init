@@ -1,0 +1,96 @@
+#!/bin/bash
+# Turn this template into a project. Run once, right after cloning.
+# Usage: scripts/init --name <name> --org <reverse-domain>
+#   --name  package and product name (lowercase letters, digits, hyphens)
+#   --org   reverse domain of the publisher; the app id becomes <org>.<name>
+# It also removes the template's community files and the "Starting a project" section of AGENTS.md.
+set -euo pipefail
+
+die() { echo "init: $*" >&2; exit 1; }
+usage() { echo "usage: scripts/init --name <name> --org <reverse-domain>" >&2; exit 1; }
+
+name=""
+org=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --name) [ $# -ge 2 ] || usage; name="$2"; shift 2 ;;
+    --org) [ $# -ge 2 ] || usage; org="$2"; shift 2 ;;
+    *) usage ;;
+  esac
+done
+[ -n "$name" ] && [ -n "$org" ] || usage
+echo "$name" | grep -Eq '^[a-z][a-z0-9-]*$' || die "name must be lowercase letters, digits and hyphens, starting with a letter"
+echo "$org" | grep -Eq '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$' || die "org must be a reverse domain such as com.example"
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+[ -f scripts/init ] || die "already initialised"
+
+NAME="$name" ORG="$org" node --input-type=module - <<'JS'
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+
+const { NAME: name, ORG: org } = process.env;
+const writeJson = (file, data) => writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+const rewrite = (file, edit) => writeFileSync(file, edit(readFileSync(file, "utf8")));
+
+const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+pkg.name = name;
+pkg.productName = name;
+pkg.description = name;
+// Installers show the author as the publisher: the org's domain until the project names one.
+pkg.author = org.split(".").reverse().join(".");
+delete pkg.license;
+writeJson("package.json", pkg);
+
+for (const file of readdirSync("src/renderer/messages")) {
+  const path = `src/renderer/messages/${file}`;
+  const messages = JSON.parse(readFileSync(path, "utf8"));
+  messages.Shell.title = name;
+  writeJson(path, messages);
+}
+
+rewrite("src/renderer/index.html", (text) => text.replace(/<title>.*<\/title>/, `<title>${name}</title>`));
+rewrite("forge.config.ts", (text) =>
+  text.replace('appBundleId: "io.example.electron-boilerplate"', `appBundleId: "${org}.${name}"`),
+);
+JS
+
+cat > README.md <<README
+# $name
+
+## Commands
+
+- \`pnpm install\` installs dependencies.
+- \`pnpm dev\` runs the app with the renderer on a hot-reloading dev server.
+- \`pnpm check\` is the gate: format, lint, typecheck, locales, unit tests, packaged build.
+- \`pnpm e2e\` builds the app, drives it with Playwright and scans it with axe.
+- \`pnpm release\` releases from a Mac (see docs/release.md).
+- \`pnpm update-check\` reports outdated dependencies, Node and pnpm.
+
+## Structure
+
+\`\`\`
+src/main/      main process: lifecycle, window, app:// protocol, IPC handlers
+src/preload/   the bridge that exposes the IPC contract as window.api
+src/renderer/  React app: app (routes), features, shared, ui, messages
+src/shared/    code every process uses: Result, http client, IPC contract, locales
+e2e/           Playwright tests against the built app
+\`\`\`
+
+Read AGENTS.md for the rules the linter enforces.
+README
+
+# AGENTS.md lists this script and explains how to start a project; neither applies afterwards.
+sed -i.bak 's#^\(scripts/ *\)init, #\1#' AGENTS.md && rm -f AGENTS.md.bak
+awk '/^## Starting a project$/ { exit } /^$/ { blank++; next } { while (blank > 0) { print ""; blank-- } print }' AGENTS.md > AGENTS.md.new
+mv AGENTS.md.new AGENTS.md
+
+rm -f LICENSE scripts/init
+# Community files describe the template, not the new project.
+rm -rf CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md PRINCIPLES.md .github/ISSUE_TEMPLATE .github/PULL_REQUEST_TEMPLATE.md
+
+rm -rf .git
+git init -q -b main
+echo "Initialised $name ($org.$name, new git repository on main)."
+echo "Set \"author\" in package.json to the publisher name installers should show."
+echo "Next: pnpm install"

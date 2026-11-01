@@ -1,0 +1,21 @@
+{
+  "Shell": {
+    "title": "Electron Boilerplate",
+    "toggleTheme": "Toggle theme",
+    "language": "Language"
+  },
+  "Home": {
+    "title": "Hello, world",
+    "description": "Start building in src/renderer/features."
+  },
+  "NotFound": {
+    "title": "Page not found",
+    "description": "The page you are looking for does not exist.",
+    "home": "Back to home"
+  },
+  "Error": {
+    "title": "Something went wrong",
+    "description": "An unexpected error occurred.",
+    "retry": "Try again"
+  }
+}

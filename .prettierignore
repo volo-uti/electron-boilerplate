@@ -1,0 +1,10 @@
+# Dependencies and build output
+node_modules
+.vite
+out
+coverage
+playwright-report
+test-results
+
+# Generated
+pnpm-lock.yaml

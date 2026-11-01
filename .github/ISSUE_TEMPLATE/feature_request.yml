@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest a change or an addition to the template
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the situation where the template falls short.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What should the template do instead?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: skeleton
+    attributes:
+      label: Fit with the template
+      options:
+        - label: Every new project needs this. Otherwise it belongs in an on-demand capability, not the skeleton (see PRINCIPLES.md).

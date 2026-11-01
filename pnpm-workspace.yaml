@@ -1,0 +1,15 @@
+# Electron Forge refuses to run unless node_modules is flat.
+nodeLinker: hoisted
+
+# Do not install versions published less than a day ago (minutes).
+minimumReleaseAge: 1440
+
+# Packages whose install scripts may run.
+allowBuilds:
+  # Copies the 7-Zip binary the Squirrel.Windows maker needs.
+  electron-winstaller: true
+  # Native helpers of the DMG maker (macOS only).
+  fs-xattr: true
+  macos-alias: true
+  lefthook: true
+  unrs-resolver: true

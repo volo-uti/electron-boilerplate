@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in the template does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For security problems, do not use this form; see SECURITY.md.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands or a minimal repository that shows the problem.
+      placeholder: |
+        1. git clone ...
+        2. pnpm install
+        3. pnpm check
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit of this repository
+      placeholder: abc1234
+    validations:
+      required: true
+  - type: input
+    id: tools
+    attributes:
+      label: Node and pnpm versions
+      description: Output of `node -v` and `pnpm -v`.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Linux, Windows, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Paste the failing output, for example from `pnpm check`.
+      render: shell

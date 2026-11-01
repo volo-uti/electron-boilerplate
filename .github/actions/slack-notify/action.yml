@@ -1,0 +1,46 @@
+name: Slack notify
+description: Posts a deploy status message to Slack. Does nothing when the token or channel is empty.
+
+inputs:
+  status:
+    description: "One of start, success, failure, cancelled"
+    required: true
+  title:
+    description: "What this run is about, e.g. Deploy"
+    required: true
+  token:
+    description: "Slack bot token (chat:write scope); empty skips the message"
+    required: false
+    default: ""
+  channel:
+    description: "Slack channel name or id; empty skips the message"
+    required: false
+    default: ""
+  note:
+    description: "An extra line under the headline. Empty adds nothing"
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - if: ${{ inputs.token != '' && inputs.channel != '' }}
+      uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+      with:
+        method: chat.postMessage
+        token: ${{ inputs.token }}
+        payload: |
+          channel: "${{ inputs.channel }}"
+          text: "${{ inputs.status == 'start' && '🚀' || inputs.status == 'success' && '🌼' || inputs.status == 'failure' && '🔥' || '⏹' }} ${{ github.repository }} ${{ inputs.title }} ${{ inputs.status == 'start' && 'started' || inputs.status == 'success' && 'succeeded' || inputs.status == 'failure' && 'failed' || 'cancelled' }}${{ inputs.note != '' && format('\n{0}', inputs.note) || '' }}"
+          attachments:
+            - color: "${{ inputs.status == 'start' && '#439FE0' || inputs.status == 'success' && 'good' || inputs.status == 'failure' && 'danger' || 'warning' }}"
+              fields:
+                - title: "Branch"
+                  value: "${{ github.ref_name }}"
+                  short: true
+                - title: "Actor"
+                  value: "${{ github.actor }}"
+                  short: true
+                - title: "Run"
+                  value: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  short: false

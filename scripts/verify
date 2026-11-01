@@ -1,0 +1,14 @@
+#!/bin/bash
+# Run `pnpm check` in a clean Docker container (the same gate, no local state).
+# Usage: pnpm verify
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+
+command -v docker >/dev/null 2>&1 || { echo "verify: docker is not installed" >&2; exit 1; }
+node_version="$(tr -d '[:space:]' < .nvmrc)"
+[ -n "$node_version" ] || { echo "verify: .nvmrc is empty" >&2; exit 1; }
+
+DOCKER_BUILDKIT=1 docker build --target check --build-arg "NODE_VERSION=$node_version" .
+echo "verify: pnpm check passed in a clean container"
